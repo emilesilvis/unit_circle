@@ -88,7 +88,6 @@ const colors = {
 const visible = { sin: true, cos: true, tan: false, sec: false, csc: false, cot: false };
 let useRadians = false;
 let showSpecial = true;
-let showProof = false;
 let tutorialActive = false;
 let tutorialStep = 0;
 let savedState = null;
@@ -318,27 +317,6 @@ degRadBtn.addEventListener('click', () => {
 });
 controlsEl.appendChild(degRadBtn);
 
-const proofBtn = document.createElement('button');
-proofBtn.className = 'toggle off';
-proofBtn.textContent = 'Proof';
-proofBtn.style.borderColor = '#6366f1';
-proofBtn.style.background = '#fff';
-proofBtn.style.color = '#6366f1';
-proofBtn.addEventListener('click', () => {
-  if (tutorialActive) return;
-  showProof = !showProof;
-  proofBtn.classList.toggle('off', !showProof);
-  if (showProof) {
-    proofBtn.style.background = '#6366f1';
-    proofBtn.style.color = '#fff';
-  } else {
-    proofBtn.style.background = '#fff';
-    proofBtn.style.color = '#6366f1';
-  }
-  draw();
-});
-controlsEl.appendChild(proofBtn);
-
 const tutorialBtn = document.createElement('button');
 tutorialBtn.className = 'toggle off';
 tutorialBtn.textContent = 'Tutorial';
@@ -362,18 +340,15 @@ function updateToggleButtons() {
     btn.disabled = tutorialActive;
     btn.style.pointerEvents = tutorialActive ? 'none' : '';
   });
-  // Also dim Deg/Proof buttons during tutorial
+  // Also dim Deg button during tutorial
   degRadBtn.disabled = tutorialActive;
   degRadBtn.style.pointerEvents = tutorialActive ? 'none' : '';
-  proofBtn.disabled = tutorialActive;
-  proofBtn.style.pointerEvents = tutorialActive ? 'none' : '';
 }
 
 function startTutorial() {
-  savedState = { angleDeg, angle, visible: {...visible}, showProof };
+  savedState = { angleDeg, angle, visible: {...visible} };
   tutorialActive = true;
   tutorialStep = 0;
-  showProof = false;
   tutorialBtn.classList.remove('off');
   tutorialBtn.style.background = '#8b5cf6';
   tutorialBtn.style.color = '#fff';
@@ -389,16 +364,11 @@ function stopTutorial() {
   Object.assign(visible, savedState.visible);
   angleDeg = savedState.angleDeg;
   angle = savedState.angle;
-  showProof = savedState.showProof;
   savedState = null;
   tutorialBtn.classList.add('off');
   tutorialBtn.style.background = '#fff';
   tutorialBtn.style.color = '#8b5cf6';
   tutorialBtn.textContent = 'Tutorial';
-  // Sync proof button state
-  proofBtn.classList.toggle('off', !showProof);
-  proofBtn.style.background = showProof ? '#6366f1' : '#fff';
-  proofBtn.style.color = showProof ? '#fff' : '#6366f1';
   updateToggleButtons();
   draw();
 }
@@ -499,25 +469,13 @@ function text(str, x, y, color, size = 12, align = 'left', baseline = 'middle') 
   ctx.fillText(str, x, y);
 }
 
-// Determine which fills/labels to show based on proof mode or tutorial
+// Determine which fills/labels to show based on tutorial
 function activeFills() {
   if (tutorialActive) return TUTORIAL_STEPS[tutorialStep].fills;
-  if (showProof) {
-    const f = ['inner'];
-    if ((visible.tan || visible.sec) && !isNaN(trigValues(angle).sec)) f.push('outer');
-    if ((visible.cot || visible.csc) && !isNaN(trigValues(angle).csc)) f.push('cotcsc');
-    return f;
-  }
   return [];
 }
 function activeLabels() {
   if (tutorialActive) return TUTORIAL_STEPS[tutorialStep].labels;
-  if (showProof) {
-    const l = ['inner'];
-    if ((visible.tan || visible.sec) && !isNaN(trigValues(angle).sec)) l.push('outer');
-    if ((visible.cot || visible.csc) && !isNaN(trigValues(angle).csc)) l.push('cotcsc');
-    return l;
-  }
   return [];
 }
 
@@ -681,25 +639,6 @@ function drawAllLabels(toX, toY, px, py, v, circleR) {
     }
   }
 
-  // --- SOHCAHTOA annotation (only in non-tutorial proof mode) ---
-  if (showProof && !tutorialActive) {
-    const annotX = 12, annotY = 16, lineH = 15;
-    ctx.font = `600 10px system-ui, sans-serif`;
-    ctx.fillStyle = '#6366f1';
-    ctx.globalAlpha = 0.7;
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    ctx.fillText('Similar △ proof:', annotX, annotY);
-    ctx.font = `10px system-ui, sans-serif`;
-    ctx.fillStyle = '#475569';
-    ctx.fillText('sin = opp / hyp', annotX, annotY + lineH);
-    ctx.fillText('cos = adj / hyp', annotX, annotY + lineH * 2);
-    if (labels.includes('outer'))
-      ctx.fillText('tan = opp / adj', annotX, annotY + lineH * 3);
-    if (labels.includes('cotcsc'))
-      ctx.fillText('cot = adj / opp', annotX, annotY + lineH * (labels.includes('outer') ? 4 : 3));
-    ctx.globalAlpha = 1.0;
-  }
 }
 
 // Word-wrap text for tutorial card
@@ -1126,13 +1065,13 @@ function draw() {
   // cos: horizontal from O to (cos, 0)
   if (visible.cos) {
     line(cx, cy, toX(px), cy, colors.cos, 3);
-    if (!showProof && !tutorialActive) text('cos', toX(px / 2), cy + 14, colors.cos, 11, 'center');
+    if (!tutorialActive) text('cos', toX(px / 2), cy + 14, colors.cos, 11, 'center');
   }
 
   // sin: vertical from (cos, 0) to P
   if (visible.sin) {
     line(toX(px), cy, toX(px), toY(py), colors.sin, 3);
-    if (!showProof && !tutorialActive) text('sin', toX(px) + (px >= 0 ? 12 : -12), toY(py / 2), colors.sin, 11, px >= 0 ? 'left' : 'right');
+    if (!tutorialActive) text('sin', toX(px) + (px >= 0 ? 12 : -12), toY(py / 2), colors.sin, 11, px >= 0 ? 'left' : 'right');
   }
 
   // tan: from P along tangent to x-axis at (sec, 0)
@@ -1142,7 +1081,7 @@ function draw() {
     const t = Math.abs(v.sec) > maxVis ? (sv - px) / (v.sec - px) : 1;
     const endY = py * (1 - t); // linearly interpolate y toward 0
     line(toX(px), toY(py), toX(sv), toY(endY), colors.tan, 3);
-    if (!showProof && !tutorialActive) {
+    if (!tutorialActive) {
       const midX = (px + sv) / 2;
       const midY = (py + endY) / 2;
       const off = py >= 0 ? -10 : 10;
@@ -1154,7 +1093,7 @@ function draw() {
   if (visible.sec && !isNaN(v.sec) && isFinite(v.sec)) {
     const sv = clamp(v.sec, maxVis);
     line(cx, cy, toX(sv), cy, colors.sec, 3);
-    if (!showProof && !tutorialActive) text('sec', toX(sv / 2), cy + (visible.cos ? -12 : 14), colors.sec, 11, 'center');
+    if (!tutorialActive) text('sec', toX(sv / 2), cy + (visible.cos ? -12 : 14), colors.sec, 11, 'center');
   }
 
   // cot: from P along tangent to y-axis at (0, csc)
@@ -1163,7 +1102,7 @@ function draw() {
     const t = Math.abs(v.csc) > maxVis ? (cv - py) / (v.csc - py) : 1;
     const endX = px * (1 - t);
     line(toX(px), toY(py), toX(endX), toY(cv), colors.cot, 3);
-    if (!showProof && !tutorialActive) {
+    if (!tutorialActive) {
       const midX = (px + endX) / 2;
       const midY = (py + cv) / 2;
       const off = px >= 0 ? -10 : 10;
@@ -1175,7 +1114,7 @@ function draw() {
   if (visible.csc && !isNaN(v.csc) && isFinite(v.csc)) {
     const cv = clamp(v.csc, maxVis);
     line(cx, cy, cx, toY(cv), colors.csc, 3);
-    if (!showProof && !tutorialActive) text('csc', cx + (visible.cot ? 12 : -12), toY(cv / 2), colors.csc, 11, visible.cot ? 'left' : 'right');
+    if (!tutorialActive) text('csc', cx + (visible.cot ? 12 : -12), toY(cv / 2), colors.csc, 11, visible.cot ? 'left' : 'right');
   }
 
   // Triangle side labels (on top of segments)
