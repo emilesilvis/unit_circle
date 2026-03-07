@@ -58,6 +58,10 @@
     color: inherit;
     opacity: 0.4;
   }
+  .toggle:disabled {
+    opacity: 0.25;
+    cursor: default;
+  }
 </style>
 </head>
 <body>
@@ -84,6 +88,12 @@ const colors = {
 const visible = { sin: true, cos: true, tan: false, sec: false, csc: false, cot: false };
 let useRadians = false;
 let showSpecial = true;
+let showProof = false;
+let tutorialActive = false;
+let tutorialStep = 0;
+let savedState = null;
+let hoveredHighlight = null;  // currently hovered highlight box
+let highlightBoxes = [];      // bounding boxes for highlighted terms in card
 
 const specialAngles = [
   { deg: 0, rad: '0' }, { deg: 30, rad: 'π/6' }, { deg: 45, rad: 'π/4' },
@@ -92,6 +102,156 @@ const specialAngles = [
   { deg: 210, rad: '7π/6' }, { deg: 225, rad: '5π/4' }, { deg: 240, rad: '4π/3' },
   { deg: 270, rad: '3π/2' }, { deg: 300, rad: '5π/3' }, { deg: 315, rad: '7π/4' },
   { deg: 330, rad: '11π/6' }
+];
+
+// Exact values for special angles (Q1 base angles, magnitude only)
+const EXACT = {
+  0:   { sin: '0', cos: '1', tan: '0', sec: '1', csc: '—', cot: '—' },
+  30:  { sin: '1/2', cos: '√3/2', tan: '√3/3', sec: '2√3/3', csc: '2', cot: '√3' },
+  45:  { sin: '√2/2', cos: '√2/2', tan: '1', sec: '√2', csc: '√2', cot: '1' },
+  60:  { sin: '√3/2', cos: '1/2', tan: '√3', sec: '2', csc: '2√3/3', cot: '√3/3' },
+  90:  { sin: '1', cos: '0', tan: '—', sec: '—', csc: '1', cot: '0' },
+};
+
+// Get exact string for a trig function at any special angle (handles all quadrants)
+function exactStr(deg, fn) {
+  // Normalize to 0-360
+  const d = ((deg % 360) + 360) % 360;
+  // Find reference angle and signs
+  let ref, sinSign, cosSign;
+  if (d <= 90)       { ref = d;       sinSign = 1; cosSign = 1; }
+  else if (d <= 180) { ref = 180 - d; sinSign = 1; cosSign = -1; }
+  else if (d <= 270) { ref = d - 180; sinSign = -1; cosSign = -1; }
+  else               { ref = 360 - d; sinSign = -1; cosSign = 1; }
+
+  const e = EXACT[ref];
+  if (!e) return null;
+
+  // For the triangle side labels we just want magnitude
+  return e[fn] || null;
+}
+
+// Tutorial step definitions
+const TUTORIAL_STEPS = [
+  {
+    title: 'The Unit Circle',
+    body: 'This circle has radius 1. Point P sits on the circle at angle θ from the x-axis. The line from the origin O to P always has length 1.',
+    formula: null,
+    angle: 50,
+    visible: { sin:false, cos:false, tan:false, sec:false, csc:false, cot:false },
+    fills: [],
+    labels: [],
+    highlights: [
+      {term: 'radius 1', color: '#6366f1', target: 'radius'},
+      {term: 'Point P', color: '#1e293b', target: 'point'},
+    ],
+  },
+  {
+    title: 'The Inner Triangle',
+    body: 'Drop a perpendicular from P to the x-axis. This creates a right triangle with the radius as its hypotenuse.',
+    formula: 'hypotenuse = 1',
+    angle: 50,
+    visible: { sin:true, cos:true, tan:false, sec:false, csc:false, cot:false },
+    fills: ['inner'],
+    labels: [],
+    highlights: [
+      {term: 'hypotenuse', color: '#6366f1', target: 'radius'},
+    ],
+  },
+  {
+    title: 'Sin & Cos',
+    body: 'Since the hypotenuse is 1, the opposite side equals sin θ and the adjacent side equals cos θ directly — no division needed!',
+    formula: 'sin θ = opp / 1 = opp\ncos θ = adj / 1 = adj',
+    angle: 50,
+    visible: { sin:true, cos:true, tan:false, sec:false, csc:false, cot:false },
+    fills: ['inner'],
+    labels: ['inner'],
+    highlights: [
+      {term: 'sin θ', color: '#22c55e', target: 'sin'},
+      {term: 'cos θ', color: '#3b82f6', target: 'cos'},
+    ],
+  },
+  {
+    title: 'Pythagorean Identity #1',
+    body: 'The Pythagorean theorem on this triangle gives us the most fundamental trig identity:',
+    formula: 'sin²θ + cos²θ = 1',
+    angle: 50,
+    visible: { sin:true, cos:true, tan:false, sec:false, csc:false, cot:false },
+    fills: ['inner'],
+    labels: ['inner'],
+    highlights: [
+      {term: 'sin²θ', color: '#22c55e', target: 'sin'},
+      {term: 'cos²θ', color: '#3b82f6', target: 'cos'},
+    ],
+  },
+  {
+    title: 'The Tangent Line',
+    body: 'Now draw a line tangent to the circle at P. It meets the x-axis at point T. This creates a second, larger right triangle.',
+    formula: null,
+    angle: 50,
+    visible: { sin:true, cos:true, tan:true, sec:false, csc:false, cot:false },
+    fills: ['inner', 'outer'],
+    labels: [],
+    highlights: [
+      {term: 'tangent', color: '#f97316', target: 'tan'},
+    ],
+  },
+  {
+    title: 'Tan & Sec',
+    body: 'This larger triangle shares angle θ with the inner one — they\'re similar! The adjacent side is 1 (the radius), so the opposite = tan θ and the hypotenuse = sec θ.',
+    formula: 'tan θ = opp / 1 = opp\nsec θ = hyp / 1 = hyp',
+    angle: 50,
+    visible: { sin:true, cos:true, tan:true, sec:true, csc:false, cot:false },
+    fills: ['outer'],
+    labels: ['outer'],
+    highlights: [
+      {term: 'tan θ', color: '#f97316', target: 'tan'},
+      {term: 'sec θ', color: '#06b6d4', target: 'sec'},
+    ],
+  },
+  {
+    title: 'Pythagorean Identity #2',
+    body: 'Apply the Pythagorean theorem to the outer triangle:',
+    formula: 'tan²θ + 1 = sec²θ',
+    angle: 50,
+    visible: { sin:false, cos:false, tan:true, sec:true, csc:false, cot:false },
+    fills: ['outer'],
+    labels: ['outer'],
+    highlights: [
+      {term: 'tan²θ', color: '#f97316', target: 'tan'},
+      {term: 'sec²θ', color: '#06b6d4', target: 'sec'},
+    ],
+  },
+  {
+    title: 'Cot & Csc',
+    body: 'The tangent line also meets the y-axis, creating a third similar triangle. Here the adjacent side from O along the y-axis = csc θ, and the side from P to the y-axis = cot θ.',
+    formula: 'cot θ = cos / sin\ncsc θ = 1 / sin',
+    angle: 50,
+    visible: { sin:false, cos:false, tan:false, sec:false, csc:true, cot:true },
+    fills: ['cotcsc'],
+    labels: ['cotcsc'],
+    highlights: [
+      {term: 'csc θ', color: '#ec4899', target: 'csc'},
+      {term: 'cot θ', color: '#a855f7', target: 'cot'},
+    ],
+  },
+  {
+    title: 'All Together',
+    body: 'Three similar right triangles from one circle. Six trig functions. Three Pythagorean identities. Drag the point to explore!',
+    formula: 'sin²+cos²=1 · tan²+1=sec² · 1+cot²=csc²',
+    angle: 50,
+    visible: { sin:true, cos:true, tan:true, sec:true, csc:true, cot:true },
+    fills: ['inner', 'outer', 'cotcsc'],
+    labels: ['inner', 'outer', 'cotcsc'],
+    highlights: [
+      {term: 'sin²', color: '#22c55e', target: 'sin'},
+      {term: 'cos²', color: '#3b82f6', target: 'cos'},
+      {term: 'tan²', color: '#f97316', target: 'tan'},
+      {term: 'sec²', color: '#06b6d4', target: 'sec'},
+      {term: 'cot²', color: '#a855f7', target: 'cot'},
+      {term: 'csc²', color: '#ec4899', target: 'csc'},
+    ],
+  },
 ];
 
 function angleDisplayStr(deg) {
@@ -157,6 +317,116 @@ degRadBtn.addEventListener('click', () => {
   draw();
 });
 controlsEl.appendChild(degRadBtn);
+
+const proofBtn = document.createElement('button');
+proofBtn.className = 'toggle off';
+proofBtn.textContent = 'Proof';
+proofBtn.style.borderColor = '#6366f1';
+proofBtn.style.background = '#fff';
+proofBtn.style.color = '#6366f1';
+proofBtn.addEventListener('click', () => {
+  if (tutorialActive) return;
+  showProof = !showProof;
+  proofBtn.classList.toggle('off', !showProof);
+  if (showProof) {
+    proofBtn.style.background = '#6366f1';
+    proofBtn.style.color = '#fff';
+  } else {
+    proofBtn.style.background = '#fff';
+    proofBtn.style.color = '#6366f1';
+  }
+  draw();
+});
+controlsEl.appendChild(proofBtn);
+
+const tutorialBtn = document.createElement('button');
+tutorialBtn.className = 'toggle off';
+tutorialBtn.textContent = 'Tutorial';
+tutorialBtn.style.borderColor = '#8b5cf6';
+tutorialBtn.style.background = '#fff';
+tutorialBtn.style.color = '#8b5cf6';
+tutorialBtn.addEventListener('click', () => {
+  if (tutorialActive) stopTutorial();
+  else startTutorial();
+});
+controlsEl.appendChild(tutorialBtn);
+
+// Sync toggle button visuals with visible state
+function updateToggleButtons() {
+  controlsEl.querySelectorAll('button[data-fn]').forEach(btn => {
+    const fn = btn.dataset.fn;
+    const on = visible[fn];
+    btn.classList.toggle('off', !on);
+    btn.style.background = on ? colors[fn] : '#fff';
+    btn.style.color = on ? '#fff' : colors[fn];
+    btn.disabled = tutorialActive;
+    btn.style.pointerEvents = tutorialActive ? 'none' : '';
+  });
+  // Also dim Deg/Proof buttons during tutorial
+  degRadBtn.disabled = tutorialActive;
+  degRadBtn.style.pointerEvents = tutorialActive ? 'none' : '';
+  proofBtn.disabled = tutorialActive;
+  proofBtn.style.pointerEvents = tutorialActive ? 'none' : '';
+}
+
+function startTutorial() {
+  savedState = { angleDeg, angle, visible: {...visible}, showProof };
+  tutorialActive = true;
+  tutorialStep = 0;
+  showProof = false;
+  tutorialBtn.classList.remove('off');
+  tutorialBtn.style.background = '#8b5cf6';
+  tutorialBtn.style.color = '#fff';
+  tutorialBtn.textContent = 'Exit';
+  applyTutorialStep();
+}
+
+function stopTutorial() {
+  tutorialActive = false;
+  hoveredHighlight = null;
+  highlightBoxes = [];
+  canvas.style.cursor = 'crosshair';
+  Object.assign(visible, savedState.visible);
+  angleDeg = savedState.angleDeg;
+  angle = savedState.angle;
+  showProof = savedState.showProof;
+  savedState = null;
+  tutorialBtn.classList.add('off');
+  tutorialBtn.style.background = '#fff';
+  tutorialBtn.style.color = '#8b5cf6';
+  tutorialBtn.textContent = 'Tutorial';
+  // Sync proof button state
+  proofBtn.classList.toggle('off', !showProof);
+  proofBtn.style.background = showProof ? '#6366f1' : '#fff';
+  proofBtn.style.color = showProof ? '#fff' : '#6366f1';
+  updateToggleButtons();
+  draw();
+}
+
+function applyTutorialStep() {
+  const step = TUTORIAL_STEPS[tutorialStep];
+  angleDeg = step.angle;
+  angle = angleDeg * Math.PI / 180;
+  Object.keys(visible).forEach(fn => { visible[fn] = step.visible[fn]; });
+  updateToggleButtons();
+  draw();
+}
+
+function nextStep() {
+  if (tutorialStep < TUTORIAL_STEPS.length - 1) {
+    tutorialStep++;
+    applyTutorialStep();
+  } else {
+    stopTutorial(); // Finish
+  }
+}
+
+function prevStep() {
+  if (tutorialStep > 0) {
+    tutorialStep--;
+    applyTutorialStep();
+  }
+}
 
 // Resize — store dimensions so draw() uses the same values
 let drawW = 0, drawH = 0;
@@ -229,6 +499,514 @@ function text(str, x, y, color, size = 12, align = 'left', baseline = 'middle') 
   ctx.fillText(str, x, y);
 }
 
+// Determine which fills/labels to show based on proof mode or tutorial
+function activeFills() {
+  if (tutorialActive) return TUTORIAL_STEPS[tutorialStep].fills;
+  if (showProof) {
+    const f = ['inner'];
+    if ((visible.tan || visible.sec) && !isNaN(trigValues(angle).sec)) f.push('outer');
+    if ((visible.cot || visible.csc) && !isNaN(trigValues(angle).csc)) f.push('cotcsc');
+    return f;
+  }
+  return [];
+}
+function activeLabels() {
+  if (tutorialActive) return TUTORIAL_STEPS[tutorialStep].labels;
+  if (showProof) {
+    const l = ['inner'];
+    if ((visible.tan || visible.sec) && !isNaN(trigValues(angle).sec)) l.push('outer');
+    if ((visible.cot || visible.csc) && !isNaN(trigValues(angle).csc)) l.push('cotcsc');
+    return l;
+  }
+  return [];
+}
+
+// Side label helper: exact or decimal
+function sideLabel(fn, v) {
+  const e = exactStr(angleDeg, fn);
+  if (e) return e;
+  const val = v[fn];
+  if (isNaN(val) || !isFinite(val)) return '';
+  return Math.abs(val).toFixed(2);
+}
+
+// Triangle fills (called before trig segments)
+function drawAllFills(toX, toY, px, py, v, circleR, cx, cy, maxVis) {
+  const fills = activeFills();
+  if (fills.length === 0) return;
+
+  const startAngle = 0;
+  const endAngle = -angle;
+  const clampV = (val, lim) => Math.max(-lim, Math.min(lim, val));
+
+  // Inner triangle: O → A(cos,0) → P
+  if (fills.includes('inner')) {
+    ctx.beginPath();
+    ctx.moveTo(toX(0), toY(0));
+    ctx.lineTo(toX(px), toY(0));
+    ctx.lineTo(toX(px), toY(py));
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(99,102,241,0.12)';
+    ctx.fill();
+    // Right-angle marker at A
+    const sz = 0.07;
+    const rDir = py > 0 ? 1 : -1;
+    ctx.beginPath();
+    ctx.strokeStyle = '#6366f1';
+    ctx.lineWidth = 1;
+    ctx.moveTo(toX(px), toY(sz * rDir));
+    ctx.lineTo(toX(px - sz * Math.sign(px || 1)), toY(sz * rDir));
+    ctx.lineTo(toX(px - sz * Math.sign(px || 1)), toY(0));
+    ctx.stroke();
+    // Angle arc at O
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(99,102,241,0.6)';
+    ctx.lineWidth = 1.5;
+    ctx.arc(cx, cy, circleR * 0.12, startAngle, endAngle, angle > 0);
+    ctx.stroke();
+  }
+
+  // Outer triangle: O → T(sec,0) → P (clamped to match drawn segments)
+  if (fills.includes('outer') && !isNaN(v.sec) && isFinite(v.sec)) {
+    const sv = clampV(v.sec, maxVis);
+    const t = Math.abs(v.sec) > maxVis ? (sv - px) / (v.sec - px) : 1;
+    const endY = py * (1 - t);
+    ctx.beginPath();
+    ctx.moveTo(toX(0), toY(0));
+    ctx.lineTo(toX(sv), toY(0));
+    ctx.lineTo(toX(sv), toY(endY));
+    ctx.lineTo(toX(px), toY(py));
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(249,115,22,0.08)';
+    ctx.fill();
+    // Angle arc at O (slightly larger)
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(249,115,22,0.6)';
+    ctx.lineWidth = 1.5;
+    ctx.arc(cx, cy, circleR * 0.18, startAngle, endAngle, angle > 0);
+    ctx.stroke();
+  }
+
+  // Cot/Csc triangle: O → P → C(0, csc) (clamped to match drawn segments)
+  if (fills.includes('cotcsc') && !isNaN(v.csc) && isFinite(v.csc)) {
+    const cv = clampV(v.csc, maxVis);
+    const t = Math.abs(v.csc) > maxVis ? (cv - py) / (v.csc - py) : 1;
+    const endX = px * (1 - t);
+    ctx.beginPath();
+    ctx.moveTo(toX(0), toY(0));
+    ctx.lineTo(toX(px), toY(py));
+    ctx.lineTo(toX(endX), toY(cv));
+    ctx.lineTo(toX(0), toY(cv));
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(168,85,247,0.10)';
+    ctx.fill();
+    // Angle arc at O for complementary angle (from y-axis to radius)
+    const yAxisAngle = -Math.PI / 2; // pointing up in canvas coords
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(168,85,247,0.6)';
+    ctx.lineWidth = 1.5;
+    ctx.arc(cx, cy, circleR * 0.24, yAxisAngle, endAngle, false);
+    ctx.stroke();
+  }
+}
+
+// Triangle labels (called after trig segments)
+function drawAllLabels(toX, toY, px, py, v, circleR) {
+  const labels = activeLabels();
+  if (labels.length === 0) return;
+
+  const labelSize = 11;
+  const pad = 8;
+
+  // --- Inner triangle labels ---
+  if (labels.includes('inner')) {
+    // "1" on hypotenuse (midpoint of O→P, offset perpendicular outward)
+    const hypMidX = px / 2, hypMidY = py / 2;
+    const perpX = -py, perpY = px;
+    const pLen = Math.sqrt(perpX * perpX + perpY * perpY) || 1;
+    text('1',
+      toX(hypMidX + perpX / pLen * 0.08),
+      toY(hypMidY + perpY / pLen * 0.08),
+      '#6366f1', labelSize, 'center');
+    // sin label
+    const sinLabel = sideLabel('sin', v);
+    if (sinLabel && sinLabel !== '—') {
+      const xOff = px >= 0 ? -pad : pad;
+      text(sinLabel, toX(px) + xOff, toY(py / 2),
+        '#6366f1', labelSize, px >= 0 ? 'right' : 'left');
+    }
+    // cos label
+    const cosLabel = sideLabel('cos', v);
+    if (cosLabel && cosLabel !== '—') {
+      const yOff = py >= 0 ? pad : -pad;
+      text(cosLabel, toX(px / 2), toY(0) + yOff,
+        '#6366f1', labelSize, 'center', py >= 0 ? 'top' : 'bottom');
+    }
+  }
+
+  // --- Outer triangle labels ---
+  if (labels.includes('outer') && !isNaN(v.sec) && isFinite(v.sec)) {
+    const tanLabel = sideLabel('tan', v);
+    if (tanLabel && tanLabel !== '—') {
+      const tanMidX = (px + v.sec) / 2;
+      const tOff = py >= 0 ? -pad : pad;
+      text(tanLabel, toX(tanMidX), toY(py / 2) + tOff,
+        '#f97316', labelSize, 'center');
+    }
+    const secLabel = sideLabel('sec', v);
+    if (secLabel && secLabel !== '—') {
+      const yOff = py >= 0 ? -(pad + 2) : (pad + 2);
+      text(secLabel, toX(v.sec / 2), toY(0) + yOff,
+        '#f97316', labelSize, 'center', py >= 0 ? 'bottom' : 'top');
+    }
+  }
+
+  // --- Cot/Csc triangle labels ---
+  if (labels.includes('cotcsc') && !isNaN(v.csc) && isFinite(v.csc)) {
+    // cot label on P→C segment
+    const cotLabel = sideLabel('cot', v);
+    if (cotLabel && cotLabel !== '—') {
+      const cotMidX = px / 2;
+      const cotMidY = (py + v.csc) / 2;
+      const xOff = px >= 0 ? -pad : pad;
+      text(cotLabel, toX(cotMidX) + xOff, toY(cotMidY),
+        '#a855f7', labelSize, px >= 0 ? 'right' : 'left');
+    }
+    // csc label on O→C segment (y-axis)
+    const cscLabel = sideLabel('csc', v);
+    if (cscLabel && cscLabel !== '—') {
+      const xOff = px >= 0 ? -pad : pad;
+      text(cscLabel, toX(0) + xOff, toY(v.csc / 2),
+        '#a855f7', labelSize, px >= 0 ? 'right' : 'left');
+    }
+  }
+
+  // --- SOHCAHTOA annotation (only in non-tutorial proof mode) ---
+  if (showProof && !tutorialActive) {
+    const annotX = 12, annotY = 16, lineH = 15;
+    ctx.font = `600 10px system-ui, sans-serif`;
+    ctx.fillStyle = '#6366f1';
+    ctx.globalAlpha = 0.7;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText('Similar △ proof:', annotX, annotY);
+    ctx.font = `10px system-ui, sans-serif`;
+    ctx.fillStyle = '#475569';
+    ctx.fillText('sin = opp / hyp', annotX, annotY + lineH);
+    ctx.fillText('cos = adj / hyp', annotX, annotY + lineH * 2);
+    if (labels.includes('outer'))
+      ctx.fillText('tan = opp / adj', annotX, annotY + lineH * 3);
+    if (labels.includes('cotcsc'))
+      ctx.fillText('cot = adj / opp', annotX, annotY + lineH * (labels.includes('outer') ? 4 : 3));
+    ctx.globalAlpha = 1.0;
+  }
+}
+
+// Word-wrap text for tutorial card
+function wrapText(str, maxWidth, font) {
+  ctx.font = font;
+  const words = str.split(' ');
+  const lines = [];
+  let currentLine = '';
+  for (const word of words) {
+    const test = currentLine ? currentLine + ' ' + word : word;
+    if (ctx.measureText(test).width > maxWidth && currentLine) {
+      lines.push(currentLine);
+      currentLine = word;
+    } else {
+      currentLine = test;
+    }
+  }
+  if (currentLine) lines.push(currentLine);
+  return lines;
+}
+
+// Rounded rect helper
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+// Get canvas coordinates for a circle element's midpoint
+function getTargetPoint(target, toX, toY, px, py, v) {
+  switch(target) {
+    case 'radius': return {x: toX(px/2), y: toY(py/2)};
+    case 'point':  return {x: toX(px), y: toY(py)};
+    case 'sin':    return {x: toX(px), y: toY(py/2)};
+    case 'cos':    return {x: toX(px/2), y: toY(0)};
+    case 'tan':
+      return (!isNaN(v.sec) && isFinite(v.sec)) ? {x: toX((px+v.sec)/2), y: toY(py/2)} : null;
+    case 'sec':
+      return (!isNaN(v.sec) && isFinite(v.sec)) ? {x: toX(v.sec/2), y: toY(0)} : null;
+    case 'cot':
+      return (!isNaN(v.csc) && isFinite(v.csc)) ? {x: toX(px/2), y: toY((py+v.csc)/2)} : null;
+    case 'csc':
+      return (!isNaN(v.csc) && isFinite(v.csc)) ? {x: toX(0), y: toY(v.csc/2)} : null;
+    default: return null;
+  }
+}
+
+// Draw glow effect on a hovered circle element
+function drawElementGlow(target, toX, toY, px, py, v, circleR, cx, cy, color) {
+  ctx.save();
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 16;
+  ctx.lineWidth = 7;
+  ctx.strokeStyle = color;
+  ctx.globalAlpha = 0.45;
+  ctx.lineCap = 'round';
+  switch(target) {
+    case 'radius':
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(toX(px), toY(py)); ctx.stroke();
+      break;
+    case 'point':
+      ctx.globalAlpha = 0.6;
+      ctx.beginPath(); ctx.arc(toX(px), toY(py), 10, 0, Math.PI*2);
+      ctx.fillStyle = color; ctx.fill();
+      break;
+    case 'sin':
+      ctx.beginPath(); ctx.moveTo(toX(px), cy); ctx.lineTo(toX(px), toY(py)); ctx.stroke();
+      break;
+    case 'cos':
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(toX(px), cy); ctx.stroke();
+      break;
+    case 'tan':
+      if (!isNaN(v.sec) && isFinite(v.sec)) {
+        ctx.beginPath(); ctx.moveTo(toX(px), toY(py)); ctx.lineTo(toX(v.sec), toY(0)); ctx.stroke();
+      }
+      break;
+    case 'sec':
+      if (!isNaN(v.sec) && isFinite(v.sec)) {
+        ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(toX(v.sec), cy); ctx.stroke();
+      }
+      break;
+    case 'cot':
+      if (!isNaN(v.csc) && isFinite(v.csc)) {
+        ctx.beginPath(); ctx.moveTo(toX(px), toY(py)); ctx.lineTo(toX(0), toY(v.csc)); ctx.stroke();
+      }
+      break;
+    case 'csc':
+      if (!isNaN(v.csc) && isFinite(v.csc)) {
+        ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx, toY(v.csc)); ctx.stroke();
+      }
+      break;
+  }
+  ctx.restore();
+}
+
+// Draw dashed connector line from card highlight to circle element
+function drawConnectorLine(hlBox, targetPt, color) {
+  if (!targetPt) return;
+  const sx = hlBox.x, sy = hlBox.y + hlBox.h / 2;
+  const ex = targetPt.x, ey = targetPt.y;
+  const cpx = (sx + ex) / 2;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.globalAlpha = 0.35;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(sx, sy);
+  ctx.quadraticCurveTo(cpx, sy, ex, ey);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  // Dots at endpoints
+  ctx.globalAlpha = 0.5;
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.arc(sx, sy, 3, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(ex, ey, 4, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
+}
+
+// Apply color highlights to a rendered text line (overlay colored terms on top)
+function applyHighlights(lineText, x, y, font, highlights) {
+  if (!highlights || highlights.length === 0) return;
+  const hlFont = font.replace('400', '600');
+  for (const hl of highlights) {
+    let pos = 0;
+    while (true) {
+      const idx = lineText.indexOf(hl.term, pos);
+      if (idx === -1) break;
+      ctx.font = font;
+      const prefix = lineText.slice(0, idx);
+      const prefixW = ctx.measureText(prefix).width;
+      const termW = ctx.measureText(hl.term).width;
+      // Clear original text behind
+      ctx.fillStyle = 'rgba(255,255,255,0.97)';
+      ctx.fillRect(x + prefixW - 1, y - 1, termW + 2, 15);
+      // Subtle color background pill
+      ctx.fillStyle = hl.color + '15';
+      roundRect(x + prefixW - 3, y - 2, termW + 6, 17, 3);
+      ctx.fill();
+      // Colored bold text
+      ctx.font = hlFont;
+      ctx.fillStyle = hl.color;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText(hl.term, x + prefixW, y);
+      // Dotted underline
+      ctx.beginPath();
+      ctx.strokeStyle = hl.color + '50';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 2]);
+      ctx.moveTo(x + prefixW, y + 13);
+      ctx.lineTo(x + prefixW + termW, y + 13);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // Store bounding box for hover detection
+      highlightBoxes.push({
+        x: x + prefixW - 3, y: y - 2,
+        w: termW + 6, h: 17,
+        target: hl.target, color: hl.color, term: hl.term
+      });
+      ctx.font = font;
+      pos = idx + hl.term.length;
+    }
+  }
+}
+
+// Bounding boxes for tutorial nav buttons (set during draw, checked on click)
+let prevBtnBox = null, nextBtnBox = null;
+
+// Tutorial card overlay
+function drawTutorialCard(w, h, cx, cy, circleR, gLeft) {
+  if (!tutorialActive) return;
+  highlightBoxes = [];
+  const step = TUTORIAL_STEPS[tutorialStep];
+  const stepHighlights = step.highlights || [];
+  const cardW = w - gLeft - 40;
+  const cardPad = 20;
+  const lineH = 18;
+
+  // Position card horizontally
+  const cardX = gLeft + 20;
+
+  // Fonts — larger for more breathing room
+  const titleFont = '700 16px system-ui, sans-serif';
+  const bodyFont = '400 13px system-ui, sans-serif';
+  const formulaFont = '700 14px system-ui, sans-serif';
+  const stepFont = '600 11px system-ui, sans-serif';
+
+  const bodyLines = wrapText(step.body, cardW - cardPad * 2, bodyFont);
+  const formulaLines = step.formula ? step.formula.split('\n') : [];
+
+  // Measure content height first for vertical centering
+  let contentH = cardPad; // top padding
+  contentH += 16; // step counter
+  contentH += 8;
+  contentH += 18; // title
+  contentH += 10;
+  contentH += bodyLines.length * lineH; // body
+  if (formulaLines.length) {
+    contentH += 12;
+    contentH += formulaLines.length * 20; // formula
+  }
+  contentH += 20; // spacing before nav
+  contentH += 22; // nav buttons
+  contentH += cardPad; // bottom padding
+
+  // Vertically center the card
+  const cardY = Math.max(20, (h - contentH) / 2);
+
+  // Draw card background
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.08)';
+  ctx.shadowBlur = 16;
+  ctx.shadowOffsetY = 4;
+  roundRect(cardX, cardY, cardW, contentH, 14);
+  ctx.fillStyle = 'rgba(255,255,255,0.97)';
+  ctx.fill();
+  ctx.restore();
+
+  // Border
+  roundRect(cardX, cardY, cardW, contentH, 14);
+  ctx.strokeStyle = '#e2e8f0';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  let curY = cardY + cardPad;
+  const textX = cardX + cardPad;
+  const textW = cardW - cardPad * 2;
+
+  // Step counter
+  ctx.font = stepFont;
+  ctx.fillStyle = '#94a3b8';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText(`Step ${tutorialStep + 1} of ${TUTORIAL_STEPS.length}`, textX, curY);
+  curY += 24;
+
+  // Title
+  ctx.font = titleFont;
+  ctx.fillStyle = '#1e293b';
+  ctx.fillText(step.title, textX, curY);
+  curY += 28;
+
+  // Body (with color-coded highlights)
+  bodyLines.forEach(l => {
+    ctx.font = bodyFont;
+    ctx.fillStyle = '#475569';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(l, textX, curY);
+    applyHighlights(l, textX, curY, bodyFont, stepHighlights);
+    curY += lineH;
+  });
+
+  // Formula (with color-coded highlights)
+  if (formulaLines.length) {
+    curY += 10;
+    formulaLines.forEach(l => {
+      ctx.font = formulaFont;
+      ctx.fillStyle = '#6366f1';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText(l, textX, curY);
+      applyHighlights(l, textX, curY, formulaFont, stepHighlights);
+      curY += 20;
+    });
+  }
+
+  curY += 16;
+
+  // Navigation buttons
+  const navY = curY;
+  const btnH = 22;
+
+  // Prev button
+  prevBtnBox = null;
+  if (tutorialStep > 0) {
+    ctx.font = '600 13px system-ui, sans-serif';
+    ctx.fillStyle = '#6366f1';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText('← Prev', textX, navY);
+    const prevW = ctx.measureText('← Prev').width;
+    prevBtnBox = { x: textX - 4, y: navY - 4, w: prevW + 8, h: btnH + 4 };
+  }
+
+  // Next button (or "Finish")
+  const isLast = tutorialStep === TUTORIAL_STEPS.length - 1;
+  const nextLabel = isLast ? '✓ Finish' : 'Next →';
+  ctx.font = '600 13px system-ui, sans-serif';
+  ctx.fillStyle = '#6366f1';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'top';
+  const nextTextX = cardX + cardW - cardPad;
+  ctx.fillText(nextLabel, nextTextX, navY);
+  const nextW = ctx.measureText(nextLabel).width;
+  nextBtnBox = { x: nextTextX - nextW - 4, y: navY - 4, w: nextW + 8, h: btnH + 4 };
+}
+
 // Main draw
 function draw() {
   const w = drawW, h = drawH;
@@ -240,11 +1018,13 @@ function draw() {
   const v = trigValues(angle);
   const px = Math.cos(angle), py = Math.sin(angle);
 
-  // Layout
+  // Layout — adjusted during tutorial to give card more space
   const pad = 30;
-  const circleR = Math.min((w * 0.42 - pad * 2) / 2.8, (h - pad * 2) / 2.8);
-  const cx = w * 0.22;
+  const circleW = tutorialActive ? w * 0.36 : w * 0.42;
+  const circleR = Math.min((circleW - pad * 2) / 2.8, (h - pad * 2) / 2.8);
+  const cx = tutorialActive ? w * 0.18 : w * 0.22;
   const cy = h * 0.5;
+  const gLeft = tutorialActive ? w * 0.38 : w * 0.48;
 
   // Convert math coords to canvas coords (for circle side)
   const toX = mx => cx + mx * circleR;
@@ -252,7 +1032,6 @@ function draw() {
 
   // --- UNIT CIRCLE SIDE ---
   // Clip circle area to prevent segments from overflowing
-  const gLeft = w * 0.48;
   ctx.save();
   ctx.beginPath();
   ctx.rect(0, 0, gLeft, h);
@@ -340,17 +1119,20 @@ function draw() {
     ctx.stroke();
   }
 
+  // Triangle fills (underneath segments)
+  drawAllFills(toX, toY, px, py, v, circleR, cx, cy, maxVis);
+
   // Function segments on circle
   // cos: horizontal from O to (cos, 0)
   if (visible.cos) {
     line(cx, cy, toX(px), cy, colors.cos, 3);
-    text('cos', toX(px / 2), cy + 14, colors.cos, 11, 'center');
+    if (!showProof && !tutorialActive) text('cos', toX(px / 2), cy + 14, colors.cos, 11, 'center');
   }
 
   // sin: vertical from (cos, 0) to P
   if (visible.sin) {
     line(toX(px), cy, toX(px), toY(py), colors.sin, 3);
-    text('sin', toX(px) + (px >= 0 ? 12 : -12), toY(py / 2), colors.sin, 11, px >= 0 ? 'left' : 'right');
+    if (!showProof && !tutorialActive) text('sin', toX(px) + (px >= 0 ? 12 : -12), toY(py / 2), colors.sin, 11, px >= 0 ? 'left' : 'right');
   }
 
   // tan: from P along tangent to x-axis at (sec, 0)
@@ -360,17 +1142,19 @@ function draw() {
     const t = Math.abs(v.sec) > maxVis ? (sv - px) / (v.sec - px) : 1;
     const endY = py * (1 - t); // linearly interpolate y toward 0
     line(toX(px), toY(py), toX(sv), toY(endY), colors.tan, 3);
-    const midX = (px + sv) / 2;
-    const midY = (py + endY) / 2;
-    const off = py >= 0 ? -10 : 10;
-    text('tan', toX(midX) + off, toY(midY) + off, colors.tan, 11, 'center');
+    if (!showProof && !tutorialActive) {
+      const midX = (px + sv) / 2;
+      const midY = (py + endY) / 2;
+      const off = py >= 0 ? -10 : 10;
+      text('tan', toX(midX) + off, toY(midY) + off, colors.tan, 11, 'center');
+    }
   }
 
   // sec: from O along x-axis to (sec, 0)
   if (visible.sec && !isNaN(v.sec) && isFinite(v.sec)) {
     const sv = clamp(v.sec, maxVis);
     line(cx, cy, toX(sv), cy, colors.sec, 3);
-    text('sec', toX(sv / 2), cy + (visible.cos ? -12 : 14), colors.sec, 11, 'center');
+    if (!showProof && !tutorialActive) text('sec', toX(sv / 2), cy + (visible.cos ? -12 : 14), colors.sec, 11, 'center');
   }
 
   // cot: from P along tangent to y-axis at (0, csc)
@@ -379,24 +1163,49 @@ function draw() {
     const t = Math.abs(v.csc) > maxVis ? (cv - py) / (v.csc - py) : 1;
     const endX = px * (1 - t);
     line(toX(px), toY(py), toX(endX), toY(cv), colors.cot, 3);
-    const midX = (px + endX) / 2;
-    const midY = (py + cv) / 2;
-    const off = px >= 0 ? -10 : 10;
-    text('cot', toX(midX) + off, toY(midY), colors.cot, 11, 'center');
+    if (!showProof && !tutorialActive) {
+      const midX = (px + endX) / 2;
+      const midY = (py + cv) / 2;
+      const off = px >= 0 ? -10 : 10;
+      text('cot', toX(midX) + off, toY(midY), colors.cot, 11, 'center');
+    }
   }
 
   // csc: from O along y-axis to (0, csc)
   if (visible.csc && !isNaN(v.csc) && isFinite(v.csc)) {
     const cv = clamp(v.csc, maxVis);
     line(cx, cy, cx, toY(cv), colors.csc, 3);
-    text('csc', cx + (visible.cot ? 12 : -12), toY(cv / 2), colors.csc, 11, visible.cot ? 'left' : 'right');
+    if (!showProof && !tutorialActive) text('csc', cx + (visible.cot ? 12 : -12), toY(cv / 2), colors.csc, 11, visible.cot ? 'left' : 'right');
   }
+
+  // Triangle side labels (on top of segments)
+  drawAllLabels(toX, toY, px, py, v, circleR);
 
   // Point on circle
   dot(toX(px), toY(py), 5, '#1e293b');
 
+  // Highlight glow on hovered circle element (inside circle clip)
+  if (tutorialActive && hoveredHighlight) {
+    drawElementGlow(hoveredHighlight.target, toX, toY, px, py, v, circleR, cx, cy, hoveredHighlight.color);
+  }
+
   // --- GRAPH SIDE ---
   ctx.restore(); // end circle-side clip
+
+  // Tutorial: draw card overlay in the graph area
+  if (tutorialActive) {
+    // Dim graph area
+    ctx.fillStyle = '#f0f4f8';
+    ctx.fillRect(gLeft, 0, w - gLeft, h);
+    drawTutorialCard(w, h, cx, cy, circleR, gLeft);
+    // Connector line from hovered highlight to circle element
+    if (hoveredHighlight) {
+      const targetPt = getTargetPoint(hoveredHighlight.target, toX, toY, px, py, v);
+      drawConnectorLine(hoveredHighlight, targetPt, hoveredHighlight.color);
+    }
+    return; // skip graph rendering during tutorial
+  }
+
   const gRight = w - pad;
   const gTop = pad;
   const gBot = h - pad;
@@ -541,6 +1350,27 @@ function getAngleFromEvent(e) {
 }
 
 function onDown(e) {
+  // Tutorial: check card button clicks
+  if (tutorialActive) {
+    const rect = canvas.getBoundingClientRect();
+    let clientX, clientY;
+    if (e.touches) { clientX = e.touches[0].clientX; clientY = e.touches[0].clientY; }
+    else { clientX = e.clientX; clientY = e.clientY; }
+    const mx = clientX - rect.left;
+    const my = clientY - rect.top;
+    if (prevBtnBox && mx >= prevBtnBox.x && mx <= prevBtnBox.x + prevBtnBox.w &&
+        my >= prevBtnBox.y && my <= prevBtnBox.y + prevBtnBox.h) {
+      prevStep();
+      return;
+    }
+    if (nextBtnBox && mx >= nextBtnBox.x && mx <= nextBtnBox.x + nextBtnBox.w &&
+        my >= nextBtnBox.y && my <= nextBtnBox.y + nextBtnBox.h) {
+      nextStep();
+      return;
+    }
+    return; // lock angle dragging during tutorial
+  }
+
   const a = getAngleFromEvent(e);
   if (a !== null) {
     dragging = true;
@@ -552,7 +1382,7 @@ function onDown(e) {
 }
 
 function onMove(e) {
-  if (!dragging) return;
+  if (tutorialActive || !dragging) return;
   e.preventDefault();
   const rect = canvas.getBoundingClientRect();
   const w = rect.width;
@@ -588,8 +1418,53 @@ canvas.addEventListener('touchstart', onDown, { passive: false });
 canvas.addEventListener('touchmove', onMove, { passive: false });
 canvas.addEventListener('touchend', onUp);
 
+// Tutorial highlight hover detection
+canvas.addEventListener('mousemove', (e) => {
+  if (!tutorialActive || highlightBoxes.length === 0) {
+    if (hoveredHighlight) {
+      hoveredHighlight = null;
+      canvas.style.cursor = 'crosshair';
+      draw();
+    }
+    return;
+  }
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  let found = null;
+  for (const box of highlightBoxes) {
+    if (mx >= box.x && mx <= box.x + box.w && my >= box.y && my <= box.y + box.h) {
+      found = box;
+      break;
+    }
+  }
+  // Also check nav buttons for pointer cursor
+  let overNav = false;
+  if (prevBtnBox && mx >= prevBtnBox.x && mx <= prevBtnBox.x + prevBtnBox.w &&
+      my >= prevBtnBox.y && my <= prevBtnBox.y + prevBtnBox.h) overNav = true;
+  if (nextBtnBox && mx >= nextBtnBox.x && mx <= nextBtnBox.x + nextBtnBox.w &&
+      my >= nextBtnBox.y && my <= nextBtnBox.y + nextBtnBox.h) overNav = true;
+  canvas.style.cursor = (found || overNav) ? 'pointer' : 'default';
+  if (found !== hoveredHighlight) {
+    hoveredHighlight = found;
+    draw();
+  }
+});
+
 // Keyboard
 window.addEventListener('keydown', e => {
+  if (tutorialActive) {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') {
+      e.preventDefault();
+      nextStep();
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      prevStep();
+    } else if (e.key === 'Escape') {
+      stopTutorial();
+    }
+    return;
+  }
   if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
     angleDeg = (angleDeg - 1 + 360) % 360;
     angle = angleDeg * Math.PI / 180;
