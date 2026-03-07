@@ -415,16 +415,6 @@ function draw() {
   // Point on circle
   dot(toX(px), toY(py), 5, '#1e293b');
 
-  // Axis tick marks and labels
-  [1, -1].forEach(v => {
-    // X axis
-    line(toX(v), cy - 4, toX(v), cy + 4, '#94a3b8', 1);
-    text(v.toString(), toX(v), cy + 16, '#94a3b8', 10, 'center');
-    // Y axis
-    line(cx - 4, toY(v), cx + 4, toY(v), '#94a3b8', 1);
-    text(v.toString(), cx - 12, toY(v), '#94a3b8', 10, 'right');
-  });
-
   // --- GRAPH SIDE ---
   ctx.restore(); // end circle-side clip
   const gRight = w - pad;
