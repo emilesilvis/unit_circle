@@ -75,6 +75,8 @@ const ctx = canvas.getContext('2d');
 const valuesEl = document.getElementById('values');
 const controlsEl = document.getElementById('controls');
 
+const VERSION = '1.0.0';
+
 // State
 let angleDeg = 45;
 let angle = angleDeg * Math.PI / 180;
@@ -344,6 +346,11 @@ tutorialBtn.addEventListener('click', () => {
   else startTutorial();
 });
 controlsEl.appendChild(tutorialBtn);
+
+const versionEl = document.createElement('span');
+versionEl.textContent = `v${VERSION}`;
+versionEl.style.cssText = 'color:#cbd5e1;font-size:11px;margin-left:auto;user-select:text';
+controlsEl.appendChild(versionEl);
 
 // Sync toggle button visuals with visible state
 function updateToggleButtons() {
