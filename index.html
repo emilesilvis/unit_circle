@@ -134,7 +134,7 @@ function exactStr(deg, fn) {
 const TUTORIAL_STEPS = [
   {
     title: 'The Unit Circle',
-    body: 'This circle has radius 1. Point P sits on the circle at angle θ from the x-axis. The line from the origin O to P always has length 1.',
+    body: 'This circle has radius 1. Point P sits on the circle at angle θ, measured counter-clockwise from the positive x-axis. The line from the origin O to P always has length 1.',
     formula: null,
     angle: 50,
     visible: { sin:false, cos:false, tan:false, sec:false, csc:false, cot:false },
@@ -154,12 +154,13 @@ const TUTORIAL_STEPS = [
     fills: ['inner'],
     labels: [],
     highlights: [
+      {term: 'P', color: '#1e293b', target: 'point'},
       {term: 'hypotenuse', color: '#6366f1', target: 'radius'},
     ],
   },
   {
     title: 'Sin & Cos',
-    body: 'Since the hypotenuse is 1, the opposite side equals sin θ and the adjacent side equals cos θ directly — no division needed!',
+    body: 'Since the hypotenuse is 1, the side opposite θ equals sin θ and the side adjacent to θ equals cos θ directly.',
     formula: 'sin θ = opp / 1 = opp\ncos θ = adj / 1 = adj',
     angle: 50,
     visible: { sin:true, cos:true, tan:false, sec:false, csc:false, cot:false },
@@ -173,7 +174,7 @@ const TUTORIAL_STEPS = [
   {
     title: 'Pythagorean Identity #1',
     body: 'The Pythagorean theorem on this triangle gives us the most fundamental trig identity:',
-    formula: 'sin²θ + cos²θ = 1',
+    formula: 'opp² + adj² = hyp²\nsin²θ + cos²θ = 1',
     angle: 50,
     visible: { sin:true, cos:true, tan:false, sec:false, csc:false, cot:false },
     fills: ['inner'],
@@ -185,7 +186,7 @@ const TUTORIAL_STEPS = [
   },
   {
     title: 'The Tangent Line',
-    body: 'Now draw a line tangent to the circle at P. It meets the x-axis at point T. This creates a second, larger right triangle.',
+    body: 'Now draw a line tangent to the circle at P. It meets the x-axis, creating a second, larger right triangle.',
     formula: null,
     angle: 50,
     visible: { sin:true, cos:true, tan:true, sec:false, csc:false, cot:false },
@@ -193,17 +194,19 @@ const TUTORIAL_STEPS = [
     labels: [],
     highlights: [
       {term: 'tangent', color: '#f97316', target: 'tan'},
+      {term: 'P', color: '#1e293b', target: 'point'},
     ],
   },
   {
     title: 'Tan & Sec',
-    body: 'This larger triangle shares angle θ with the inner one — they\'re similar! The adjacent side is 1 (the radius), so the opposite = tan θ and the hypotenuse = sec θ.',
-    formula: 'tan θ = opp / 1 = opp\nsec θ = hyp / 1 = hyp',
+    body: 'This larger triangle has a right angle at P and shares angle θ at the origin — making it similar to the inner one. The adjacent side is 1 (the radius), so the opposite = tan θ and the hypotenuse = sec θ.',
+    formula: 'tan θ = opp / adj = opp / 1 = opp\nsec θ = hyp / adj = hyp / 1 = hyp',
     angle: 50,
     visible: { sin:true, cos:true, tan:true, sec:true, csc:false, cot:false },
     fills: ['outer'],
     labels: ['outer'],
     highlights: [
+      {term: 'P', color: '#1e293b', target: 'point'},
       {term: 'tan θ', color: '#f97316', target: 'tan'},
       {term: 'sec θ', color: '#06b6d4', target: 'sec'},
     ],
@@ -223,8 +226,8 @@ const TUTORIAL_STEPS = [
   },
   {
     title: 'Cot & Csc',
-    body: 'The tangent line also meets the y-axis, creating a third similar triangle. Here the adjacent side from O along the y-axis = csc θ, and the side from P to the y-axis = cot θ.',
-    formula: 'cot θ = cos / sin\ncsc θ = 1 / sin',
+    body: 'The tangent line also meets the y-axis, forming a third similar triangle. Here the angle at O is 90° − θ, measured from the y-axis to the radius. The adjacent side is still 1 (the radius), so the opposite = cot θ and the hypotenuse = csc θ.',
+    formula: 'cot θ = opp / 1 = opp\ncsc θ = hyp / 1 = hyp',
     angle: 50,
     visible: { sin:false, cos:false, tan:false, sec:false, csc:true, cot:true },
     fills: ['cotcsc'],
@@ -235,8 +238,21 @@ const TUTORIAL_STEPS = [
     ],
   },
   {
+    title: 'Pythagorean Identity #3',
+    body: 'Apply the Pythagorean theorem to the third triangle:',
+    formula: '1 + cot²θ = csc²θ',
+    angle: 50,
+    visible: { sin:false, cos:false, tan:false, sec:false, csc:true, cot:true },
+    fills: ['cotcsc'],
+    labels: ['cotcsc'],
+    highlights: [
+      {term: 'cot²θ', color: '#a855f7', target: 'cot'},
+      {term: 'csc²θ', color: '#ec4899', target: 'csc'},
+    ],
+  },
+  {
     title: 'All Together',
-    body: 'Three similar right triangles from one circle. Six trig functions. Three Pythagorean identities. Drag the point to explore!',
+    body: 'Three similar right triangles from one circle. Six trig functions. Three Pythagorean identities.',
     formula: 'sin²θ + cos²θ = 1\ntan²θ + 1 = sec²θ\n1 + cot²θ = csc²θ',
     angle: 50,
     visible: { sin:true, cos:true, tan:true, sec:true, csc:true, cot:true },
