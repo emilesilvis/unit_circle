@@ -237,18 +237,18 @@ const TUTORIAL_STEPS = [
   {
     title: 'All Together',
     body: 'Three similar right triangles from one circle. Six trig functions. Three Pythagorean identities. Drag the point to explore!',
-    formula: 'sin²+cos²=1 · tan²+1=sec² · 1+cot²=csc²',
+    formula: 'sin²θ + cos²θ = 1\ntan²θ + 1 = sec²θ\n1 + cot²θ = csc²θ',
     angle: 50,
     visible: { sin:true, cos:true, tan:true, sec:true, csc:true, cot:true },
     fills: ['inner', 'outer', 'cotcsc'],
     labels: ['inner', 'outer', 'cotcsc'],
     highlights: [
-      {term: 'sin²', color: '#22c55e', target: 'sin'},
-      {term: 'cos²', color: '#3b82f6', target: 'cos'},
-      {term: 'tan²', color: '#f97316', target: 'tan'},
-      {term: 'sec²', color: '#06b6d4', target: 'sec'},
-      {term: 'cot²', color: '#a855f7', target: 'cot'},
-      {term: 'csc²', color: '#ec4899', target: 'csc'},
+      {term: 'sin²θ', color: '#22c55e', target: 'sin'},
+      {term: 'cos²θ', color: '#3b82f6', target: 'cos'},
+      {term: 'tan²θ', color: '#f97316', target: 'tan'},
+      {term: 'sec²θ', color: '#06b6d4', target: 'sec'},
+      {term: 'cot²θ', color: '#a855f7', target: 'cot'},
+      {term: 'csc²θ', color: '#ec4899', target: 'csc'},
     ],
   },
 ];
@@ -489,13 +489,12 @@ function sideLabel(fn, v) {
 }
 
 // Triangle fills (called before trig segments)
-function drawAllFills(toX, toY, px, py, v, circleR, cx, cy, maxVis) {
+function drawAllFills(toX, toY, px, py, v, circleR, cx, cy, clampX, clampY, secExceeds, cscExceeds) {
   const fills = activeFills();
   if (fills.length === 0) return;
 
   const startAngle = 0;
   const endAngle = -angle;
-  const clampV = (val, lim) => Math.max(-lim, Math.min(lim, val));
 
   // Inner triangle: O → A(cos,0) → P
   if (fills.includes('inner')) {
@@ -526,8 +525,8 @@ function drawAllFills(toX, toY, px, py, v, circleR, cx, cy, maxVis) {
 
   // Outer triangle: O → T(sec,0) → P (clamped to match drawn segments)
   if (fills.includes('outer') && !isNaN(v.sec) && isFinite(v.sec)) {
-    const sv = clampV(v.sec, maxVis);
-    const t = Math.abs(v.sec) > maxVis ? (sv - px) / (v.sec - px) : 1;
+    const sv = clampX(v.sec);
+    const t = secExceeds(v.sec) ? (sv - px) / (v.sec - px) : 1;
     const endY = py * (1 - t);
     ctx.beginPath();
     ctx.moveTo(toX(0), toY(0));
@@ -547,8 +546,8 @@ function drawAllFills(toX, toY, px, py, v, circleR, cx, cy, maxVis) {
 
   // Cot/Csc triangle: O → P → C(0, csc) (clamped to match drawn segments)
   if (fills.includes('cotcsc') && !isNaN(v.csc) && isFinite(v.csc)) {
-    const cv = clampV(v.csc, maxVis);
-    const t = Math.abs(v.csc) > maxVis ? (cv - py) / (v.csc - py) : 1;
+    const cv = clampY(v.csc);
+    const t = cscExceeds(v.csc) ? (cv - py) / (v.csc - py) : 1;
     const endX = px * (1 - t);
     ctx.beginPath();
     ctx.moveTo(toX(0), toY(0));
@@ -822,18 +821,18 @@ function drawTutorialCard(w, h, cx, cy, circleR, gLeft) {
   highlightBoxes = [];
   const step = TUTORIAL_STEPS[tutorialStep];
   const stepHighlights = step.highlights || [];
-  const cardW = w - gLeft - 40;
+  const cardW = Math.min(w - gLeft - 40, 340);
   const cardPad = 20;
-  const lineH = 18;
+  const lineH = 20;
 
   // Position card horizontally
   const cardX = gLeft + 20;
 
-  // Fonts — larger for more breathing room
-  const titleFont = '700 16px system-ui, sans-serif';
-  const bodyFont = '400 13px system-ui, sans-serif';
-  const formulaFont = '700 14px system-ui, sans-serif';
-  const stepFont = '600 11px system-ui, sans-serif';
+  // Fonts — generous sizing for readability
+  const titleFont = '700 18px system-ui, sans-serif';
+  const bodyFont = '400 14px system-ui, sans-serif';
+  const formulaFont = '700 15px system-ui, sans-serif';
+  const stepFont = '600 12px system-ui, sans-serif';
 
   const bodyLines = wrapText(step.body, cardW - cardPad * 2, bodyFont);
   const formulaLines = step.formula ? step.formula.split('\n') : [];
@@ -924,7 +923,7 @@ function drawTutorialCard(w, h, cx, cy, circleR, gLeft) {
   // Prev button
   prevBtnBox = null;
   if (tutorialStep > 0) {
-    ctx.font = '600 13px system-ui, sans-serif';
+    ctx.font = '600 14px system-ui, sans-serif';
     ctx.fillStyle = '#6366f1';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
@@ -936,7 +935,7 @@ function drawTutorialCard(w, h, cx, cy, circleR, gLeft) {
   // Next button (or "Finish")
   const isLast = tutorialStep === TUTORIAL_STEPS.length - 1;
   const nextLabel = isLast ? '✓ Finish' : 'Next →';
-  ctx.font = '600 13px system-ui, sans-serif';
+  ctx.font = '600 14px system-ui, sans-serif';
   ctx.fillStyle = '#6366f1';
   ctx.textAlign = 'right';
   ctx.textBaseline = 'top';
@@ -957,13 +956,12 @@ function draw() {
   const v = trigValues(angle);
   const px = Math.cos(angle), py = Math.sin(angle);
 
-  // Layout — adjusted during tutorial to give card more space
+  // Layout
   const pad = 30;
-  const circleW = tutorialActive ? w * 0.36 : w * 0.42;
-  const circleR = Math.min((circleW - pad * 2) / 2.8, (h - pad * 2) / 2.8);
-  const cx = tutorialActive ? w * 0.18 : w * 0.22;
+  const circleR = Math.min((w * 0.42 - pad * 2) / 2.8, (h - pad * 2) / 2.8);
+  const cx = w * 0.22;
   const cy = h * 0.5;
-  const gLeft = tutorialActive ? w * 0.38 : w * 0.48;
+  const gLeft = w * 0.48;
 
   // Convert math coords to canvas coords (for circle side)
   const toX = mx => cx + mx * circleR;
@@ -1012,21 +1010,23 @@ function draw() {
   const labelAngle = angle / 2;
   text(angleDisplayStr(angleDeg), cx + Math.cos(labelAngle) * circleR * 0.25, cy - Math.sin(labelAngle) * circleR * 0.25, '#64748b', 11, 'center');
 
-  // Clamp for visual display — compute max extent from available space
-  const clamp = (val, lim) => Math.max(-lim, Math.min(lim, val));
-  const maxVis = Math.min(
-    (cy - pad) / circleR,
-    (h - cy - pad) / circleR,
-    (gLeft - cx - pad) / circleR,
-    (cx - pad) / circleR
-  );
+  // Clamp for visual display — directional limits from available space
+  const maxRight = (gLeft - cx - pad) / circleR;
+  const maxLeft  = (cx - pad) / circleR;
+  const maxUp    = (cy - pad) / circleR;
+  const maxDown  = (h - cy - pad) / circleR;
+  const clampX = val => Math.max(-maxLeft, Math.min(maxRight, val));
+  const clampY = val => Math.max(-maxDown, Math.min(maxUp, val));
+  // Symmetric fallback for checks that just need "is it off-screen in its direction"
+  const secExceeds = v => Math.abs(v) > (v >= 0 ? maxRight : maxLeft);
+  const cscExceeds = v => Math.abs(v) > (v >= 0 ? maxUp : maxDown);
 
   // Tangent line at P (perpendicular to radius)
   // Meets x-axis at (sec θ, 0) and y-axis at (0, csc θ)
   const anyTanVisible = visible.tan || visible.sec || visible.cot || visible.csc;
   if (anyTanVisible) {
-    const secOk = !isNaN(v.sec) && isFinite(v.sec) && Math.abs(v.sec) < maxVis;
-    const cscOk = !isNaN(v.csc) && isFinite(v.csc) && Math.abs(v.csc) < maxVis;
+    const secOk = !isNaN(v.sec) && isFinite(v.sec) && !secExceeds(v.sec);
+    const cscOk = !isNaN(v.csc) && isFinite(v.csc) && !cscExceeds(v.csc);
     if (secOk && cscOk) {
       line(toX(v.sec), toY(0), toX(0), toY(v.csc), '#d1d5db', 1, [4, 4]);
     } else if (secOk) {
@@ -1059,7 +1059,7 @@ function draw() {
   }
 
   // Triangle fills (underneath segments)
-  drawAllFills(toX, toY, px, py, v, circleR, cx, cy, maxVis);
+  drawAllFills(toX, toY, px, py, v, circleR, cx, cy, clampX, clampY, secExceeds, cscExceeds);
 
   // Function segments on circle
   // cos: horizontal from O to (cos, 0)
@@ -1076,9 +1076,9 @@ function draw() {
 
   // tan: from P along tangent to x-axis at (sec, 0)
   if (visible.tan && !isNaN(v.sec) && isFinite(v.sec)) {
-    const sv = clamp(v.sec, maxVis);
+    const sv = clampX(v.sec);
     // Interpolate: if sec is clamped, find the proportional point on the tangent
-    const t = Math.abs(v.sec) > maxVis ? (sv - px) / (v.sec - px) : 1;
+    const t = secExceeds(v.sec) ? (sv - px) / (v.sec - px) : 1;
     const endY = py * (1 - t); // linearly interpolate y toward 0
     line(toX(px), toY(py), toX(sv), toY(endY), colors.tan, 3);
     if (!tutorialActive) {
@@ -1091,15 +1091,15 @@ function draw() {
 
   // sec: from O along x-axis to (sec, 0)
   if (visible.sec && !isNaN(v.sec) && isFinite(v.sec)) {
-    const sv = clamp(v.sec, maxVis);
+    const sv = clampX(v.sec);
     line(cx, cy, toX(sv), cy, colors.sec, 3);
     if (!tutorialActive) text('sec', toX(sv / 2), cy + (visible.cos ? -12 : 14), colors.sec, 11, 'center');
   }
 
   // cot: from P along tangent to y-axis at (0, csc)
   if (visible.cot && !isNaN(v.csc) && isFinite(v.csc)) {
-    const cv = clamp(v.csc, maxVis);
-    const t = Math.abs(v.csc) > maxVis ? (cv - py) / (v.csc - py) : 1;
+    const cv = clampY(v.csc);
+    const t = cscExceeds(v.csc) ? (cv - py) / (v.csc - py) : 1;
     const endX = px * (1 - t);
     line(toX(px), toY(py), toX(endX), toY(cv), colors.cot, 3);
     if (!tutorialActive) {
@@ -1112,7 +1112,7 @@ function draw() {
 
   // csc: from O along y-axis to (0, csc)
   if (visible.csc && !isNaN(v.csc) && isFinite(v.csc)) {
-    const cv = clamp(v.csc, maxVis);
+    const cv = clampY(v.csc);
     line(cx, cy, cx, toY(cv), colors.csc, 3);
     if (!tutorialActive) text('csc', cx + (visible.cot ? 12 : -12), toY(cv / 2), colors.csc, 11, visible.cot ? 'left' : 'right');
   }
