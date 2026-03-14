@@ -37,21 +37,24 @@
   #controls {
     flex-shrink: 0;
     display: flex;
+    flex-wrap: wrap;
     justify-content: center;
     align-items: center;
     gap: 8px;
-    padding: 12px 16px;
+    padding: 10px 12px;
     background: #fff;
     border-top: 1px solid #e2e8f0;
   }
   .toggle {
     border: 2px solid;
     border-radius: 6px;
-    padding: 6px 16px;
+    padding: 6px 14px;
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.15s;
+    min-height: 36px;
+    touch-action: manipulation;
   }
   .toggle.off {
     background: #fff;
@@ -61,6 +64,22 @@
   .toggle:disabled {
     opacity: 0.25;
     cursor: default;
+  }
+  @media (max-width: 480px) {
+    #values {
+      font-size: 13px;
+      gap: 4px 14px;
+      padding: 8px 10px;
+    }
+    #controls {
+      gap: 6px;
+      padding: 8px 10px;
+    }
+    .toggle {
+      padding: 5px 10px;
+      font-size: 13px;
+      min-height: 34px;
+    }
   }
 </style>
 </head>
@@ -285,6 +304,26 @@ function snapToSpecial(deg) {
     if (diff <= 3) return sa.deg;
   }
   return deg;
+}
+
+// Compute layout dimensions based on canvas size
+// Portrait: circle centered on top, graph below
+// Landscape: circle on left, graph on right
+function getLayout(w, h) {
+  const pad = 30;
+  const isPortrait = h > w * 1.1;
+  if (isPortrait) {
+    const topH = Math.round(h * 0.44);
+    const circleR = Math.min((w - pad * 2) / 2.8, (topH - pad * 2) / 2.8);
+    const cx = w * 0.5;
+    const cy = topH * 0.5;
+    return { cx, cy, circleR, gLeft: pad, gTopOffset: topH, isPortrait, pad };
+  } else {
+    const circleR = Math.min((w * 0.42 - pad * 2) / 2.8, (h - pad * 2) / 2.8);
+    const cx = w * 0.22;
+    const cy = h * 0.5;
+    return { cx, cy, circleR, gLeft: w * 0.48, gTopOffset: 0, isPortrait, pad };
+  }
 }
 
 // Create toggle buttons
@@ -839,7 +878,7 @@ function applyHighlights(lineText, x, y, font, highlights) {
 let prevBtnBox = null, nextBtnBox = null;
 
 // Tutorial card overlay
-function drawTutorialCard(w, h, cx, cy, circleR, gLeft) {
+function drawTutorialCard(w, h, cx, cy, circleR, gLeft, gTopOffset = 0, isPortrait = false) {
   if (!tutorialActive) return;
   highlightBoxes = [];
   const step = TUTORIAL_STEPS[tutorialStep];
@@ -875,8 +914,9 @@ function drawTutorialCard(w, h, cx, cy, circleR, gLeft) {
   contentH += 22; // nav buttons
   contentH += cardPad; // bottom padding
 
-  // Vertically center the card
-  const cardY = Math.max(20, (h - contentH) / 2);
+  // Vertically center the card within the card's area (graph area)
+  const areaTop = isPortrait ? gTopOffset : 0;
+  const cardY = areaTop + Math.max(20, (h - areaTop - contentH) / 2);
 
   // Draw card background
   ctx.save();
@@ -980,11 +1020,7 @@ function draw() {
   const px = Math.cos(angle), py = Math.sin(angle);
 
   // Layout
-  const pad = 30;
-  const circleR = Math.min((w * 0.42 - pad * 2) / 2.8, (h - pad * 2) / 2.8);
-  const cx = w * 0.22;
-  const cy = h * 0.5;
-  const gLeft = w * 0.48;
+  const { cx, cy, circleR, gLeft, gTopOffset, isPortrait, pad } = getLayout(w, h);
 
   // Convert math coords to canvas coords (for circle side)
   const toX = mx => cx + mx * circleR;
@@ -994,7 +1030,11 @@ function draw() {
   // Clip circle area to prevent segments from overflowing
   ctx.save();
   ctx.beginPath();
-  ctx.rect(0, 0, gLeft, h);
+  if (isPortrait) {
+    ctx.rect(0, 0, w, gTopOffset);
+  } else {
+    ctx.rect(0, 0, gLeft, h);
+  }
   ctx.clip();
 
   // Axes
@@ -1034,10 +1074,10 @@ function draw() {
   text(angleDisplayStr(angleDeg), cx + Math.cos(labelAngle) * circleR * 0.25, cy - Math.sin(labelAngle) * circleR * 0.25, '#64748b', 11, 'center');
 
   // Clamp for visual display — directional limits from available space
-  const maxRight = (gLeft - cx - pad) / circleR;
+  const maxRight = isPortrait ? (w - cx - pad) / circleR : (gLeft - cx - pad) / circleR;
   const maxLeft  = (cx - pad) / circleR;
   const maxUp    = (cy - pad) / circleR;
-  const maxDown  = (h - cy - pad) / circleR;
+  const maxDown  = isPortrait ? (gTopOffset - cy - pad) / circleR : (h - cy - pad) / circleR;
   const clampX = val => Math.max(-maxLeft, Math.min(maxRight, val));
   const clampY = val => Math.max(-maxDown, Math.min(maxUp, val));
   // Symmetric fallback for checks that just need "is it off-screen in its direction"
@@ -1158,8 +1198,12 @@ function draw() {
   if (tutorialActive) {
     // Dim graph area
     ctx.fillStyle = '#f0f4f8';
-    ctx.fillRect(gLeft, 0, w - gLeft, h);
-    drawTutorialCard(w, h, cx, cy, circleR, gLeft);
+    if (isPortrait) {
+      ctx.fillRect(0, gTopOffset, w, h - gTopOffset);
+    } else {
+      ctx.fillRect(gLeft, 0, w - gLeft, h);
+    }
+    drawTutorialCard(w, h, cx, cy, circleR, gLeft, gTopOffset, isPortrait);
     // Connector line from hovered highlight to circle element
     if (hoveredHighlight) {
       const targetPt = getTargetPoint(hoveredHighlight.target, toX, toY, px, py, v);
@@ -1169,7 +1213,7 @@ function draw() {
   }
 
   const gRight = w - pad;
-  const gTop = pad;
+  const gTop = isPortrait ? gTopOffset + Math.round(pad * 0.5) : pad;
   const gBot = h - pad;
   const gW = gRight - gLeft;
   const gH = gBot - gTop;
@@ -1286,9 +1330,7 @@ function getAngleFromEvent(e) {
   const rect = canvas.getBoundingClientRect();
   const w = rect.width;
   const h = rect.height;
-  const circleR = Math.min((w * 0.42 - 60) / 2.6, (h - 60) / 2.6);
-  const cx = w * 0.22;
-  const cy = h * 0.5;
+  const { cx, cy, circleR } = getLayout(w, h);
 
   let clientX, clientY;
   if (e.touches) {
@@ -1348,8 +1390,8 @@ function onMove(e) {
   e.preventDefault();
   const rect = canvas.getBoundingClientRect();
   const w = rect.width;
-  const cx = w * 0.22;
-  const cy = rect.height * 0.5;
+  const h = rect.height;
+  const { cx, cy } = getLayout(w, h);
 
   let clientX, clientY;
   if (e.touches) {
